@@ -48,7 +48,9 @@ def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False,
 
 
 if __name__ == "__main__":
-    root = ['/media/vig-titan/Samsung_T5/OpenRoomsFF320', 'pretrained']
+    dataroot = '/media/vig-titan/Samsung_T5/OpenRoomsFF320'
+    pretrained = 'pretrained'
+    root = [dataroot, pretrained]
     run_id = '05190941_VSG'
     run_mode = 'test'
     phase_list = ['test', ]
