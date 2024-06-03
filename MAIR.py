@@ -1,6 +1,5 @@
-import torch
 from model import *
-
+from torch.cuda.amp.autocast_mode import autocast
 
 class MAIRorg(Model):
     def __init__(self, cfg, gpu, experiment, is_train, is_DDP=True):

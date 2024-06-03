@@ -1,8 +1,5 @@
-import torch
-import torchvision.models as tvm
 from utils import *
 from .net_backbone import *
-from .network_utils import *
 
 
 class MGNet(nn.Module):
