@@ -13,4 +13,4 @@ pip install tqdm termcolor scikit-image imageio nvidia-ml-py3 h5py wandb opencv-
 ```
 
 ## Pretrained model
-[Google drive](https://drive.google.com/drive/folders/1cwm8qZdOJJziTjxJOG1bgqN0Mt-f60-V?usp=drive_link)  
+[Google drive](https://drive.google.com/drive/folders/1cwm8qZdOJJziTjxJOG1bgqN0Mt-f60-V?usp=sharing)
