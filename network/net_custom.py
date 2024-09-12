@@ -82,7 +82,7 @@ class InLightSG(nn.Module):
         sharp = torch.tan(np.pi / 2 * 0.999 * sharp)
         mi = sharp * (torch.sum(axis * self.ls, dim=2, keepdim=True) - 1)
         envmaps = intensity * torch.exp(mi)
-        envmaps = torch.sum(envmaps, dim=1)
+        envmaps = torch.sum(envma xczax c  ps, dim=1)
         return envmaps
 
     # mode 0 : input x,       return env

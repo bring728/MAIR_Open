@@ -61,8 +61,8 @@ if __name__ == '__main__':
     basedir_list_2 = []
     for basedir in tqdm(basedir_list):
         basedir = osp.join(basedir, dir_suffix)
-        if len(glob.glob(osp.join(basedir, '*.dat'))) == 2 * len(glob.glob(osp.join(basedir, '*.png'))):
-            continue
+        # if len(glob.glob(osp.join(basedir, '*.dat'))) == 2 * len(glob.glob(osp.join(basedir, '*.png'))):
+        #     continue
         basedir_list_2.append(basedir)
 
     config = ConfigParser.from_args(parser)
