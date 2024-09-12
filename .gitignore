@@ -1,3 +1,4 @@
 .idea/
 *.pyc
+cds-mvsnet/pretrained/
 pretrained/

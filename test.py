@@ -1,6 +1,6 @@
 import torch.multiprocessing
 import socket
-from record import eval_model
+from record import eval_model, output_model
 from network.net_backbone import ResUNet
 from utils import *
 from loader import load_id_wandb, load_dataloader, load_model
@@ -35,6 +35,9 @@ def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False,
     if dict_loaders is not None:
         for phase in dict_loaders:
             data_loader, _ = dict_loaders[phase]
+            if run_mode == 'output':
+                output_model(model, data_loader, gpu, cfg)
+
             if run_mode == 'test':
                 cfg.losskey.append('rgb')
                 cfg.losstype.append('l2')
@@ -48,10 +51,12 @@ def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False,
 
 
 if __name__ == "__main__":
-    dataroot = '/media/vig-titan/Samsung_T5/OpenRoomsFF320'
-    pretrained = 'pretrained'
+    dataroot = '/home/vig-titan-118/PycharmProjects/MAIR_Open/Examples/input_processed'
+    pretrained = 'pretrained/MAIR'
     root = [dataroot, pretrained]
     run_id = '05190941_VSG'
-    run_mode = 'test'
-    phase_list = ['test', ]
+    # run_mode = 'test'
+    # phase_list = ['test', ]
+    run_mode = 'output'
+    phase_list = ['custom', ]
     test(0, 1, run_mode, phase_list, root[0], root[1], False, run_id=run_id, config=None)
