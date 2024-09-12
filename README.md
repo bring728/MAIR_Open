@@ -35,7 +35,7 @@ This code has been verified to work with **CUDA 11.8**, but the specific version
 
 ## Object Insertion
 
-To insert objects into the scene, modify the input and output directories in the provided scripts.
+To insert objects into the scene, modify the input and output directories in the provided scripts. We include example real-world data in [Examples](https://github.com/bring728/MAIR_Open/tree/master/Examples/input) from [IBRNet](https://github.com/googleinterns/IBRNet?tab=readme-ov-file).  
 
 ### 1. **Find Camera Poses**
    Run the following script to get the camera poses:
