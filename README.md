@@ -11,11 +11,11 @@ This repository contains the official implementation of two related works:
 This repository provides the source code and pre-trained models for **MAIR** and its enhanced version **MAIR++**, which focus on multi-view inverse rendering with advanced 3D spatially-varying lighting estimation and implicit lighting representation. These methods are designed to improve the accuracy and efficiency of 3D scene reconstruction and rendering from multi-view inputs. The code is implemented in Python using PyTorch, making it accessible for researchers and developers.
 
 - **MAIR (CVPR 2023)**: Introduces a novel attention-based approach for inverse rendering.
-- **MAIR++ (TPAMI)**: Enhances MAIR with implicit lighting representation for better performance.
+- **MAIR++ (TPAMI)**: Enhances MAIR with implicit lighting representation for realistic rendering.
 
 For more details, refer to the original papers:
 - [MAIR Paper](https://arxiv.org/abs/2303.12368)
-- [MAIR++ Paper](https://arxiv.org/abs/2408.06707)
+- [MAIR++ Paper](https://ieeexplore.ieee.org/document/10916587)
 - [Dataset](https://github.com/bring728/OpenRooms_FF)
 ---
 
