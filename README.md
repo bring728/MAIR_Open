@@ -1,17 +1,28 @@
+# MAIR & MAIR++: Multi-view Attention Inverse Rendering
 
-# MAIR: Multi-view Attention Inverse Rendering with 3D Spatially-Varying Lighting Estimation
+This repository contains the official implementation of two related works:
+- **"MAIR: Multi-view Attention Inverse Rendering with 3D Spatially-Varying Lighting Estimation"**  
+  - Presented at **CVPR 2023**.
+- **"MAIR++: Improving Multi-view Attention Inverse Rendering with Implicit Lighting Representation"**  
+  - Accepted at **TPAMI**.
 
-This repository contains the implementation of the paper **"MAIR: Multi-view Attention Inverse Rendering with 3D Spatially-Varying Lighting Estimation"** presented at **CVPR 2023**.
+## Introduction
 
+This repository provides the source code and pre-trained models for **MAIR** and its enhanced version **MAIR++**, which focus on multi-view inverse rendering with advanced 3D spatially-varying lighting estimation and implicit lighting representation. These methods are designed to improve the accuracy and efficiency of 3D scene reconstruction and rendering from multi-view inputs. The code is implemented in Python using PyTorch, making it accessible for researchers and developers.
+
+- **MAIR (CVPR 2023)**: Introduces a novel attention-based approach for inverse rendering.
+- **MAIR++ (TPAMI)**: Enhances MAIR with implicit lighting representation for better performance.
+
+For more details, refer to the original papers:
+- [MAIR Paper](https://arxiv.org/abs/2303.12368)
+- [MAIR++ Paper](https://arxiv.org/abs/2408.06707)
+- [Dataset](https://github.com/bring728/OpenRooms_FF)
 ---
 
 ## Timelog
-
 - **2024-06-03**: MAIR initial commit (test code only)
 - **2024-09-12**: Object insertion script update
-
-## TODO(MAIR++)
-We are currently awaiting the review of our extended work, [MAIR++](https://arxiv.org/abs/2408.06707). Stay tuned for its release, as the code for MAIR++ will be made available soon.
+- **2025-03-13**: MAIR++ update
 
 ## Installation
 
@@ -62,7 +73,7 @@ To insert objects into the scene, modify the input and output directories in the
    python test.py
    ```
 
-   Download the [pretrained model](https://drive.google.com/drive/folders/1cwm8qZdOJJziTjxJOG1bgqN0Mt-f60-V?usp=sharing) and place it in `pretrained/MAIR/`.
+   Download the [our pretrained model(mair, mair++)](https://drive.google.com/drive/folders/1cwm8qZdOJJziTjxJOG1bgqN0Mt-f60-V?usp=sharing) and place it in `pretrained/`.
    
 
 ### 4. **Object Insertion**
