@@ -1,5 +1,5 @@
 import torch.cuda
-from MAIR import MAIRorg
+from MAIR import MAIRorg, MAIRplusplus
 from torch.utils.data import DataLoader
 from mvsd_dataset import *
 from datetime import datetime
@@ -65,11 +65,11 @@ def load_dataloader(dataRoot, cfg, is_DDP, phase_list, debug=False):
         sampler = None
         is_shuffle = True
         if phase == 'custom':
-            if cfg.mode == 'MG':
-                dataset = realworld_FF_singleview(dataRoot, cfg)
-            else:
-                dataset = realworld_FF(dataRoot, cfg)
+            dataset = realworld_FF(dataRoot, cfg)
             is_shuffle = False
+        elif phase == 'custom_MG':
+            dataset = realworld_FF_singleview(dataRoot, cfg)
+
         elif phase == 'mat_edit':
             dataset = mat_edit_dataset(dataRoot, cfg)
             is_shuffle = False

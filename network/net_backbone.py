@@ -25,6 +25,228 @@ def cat_up(x, y, align=False):
         x = F.interpolate(x, [y.size(2), y.size(3)], mode='bilinear', align_corners=align)
     return F.interpolate(torch.cat([x, y], dim=1), scale_factor=2, mode='bilinear', align_corners=align)
 
+
+### vision transformer start
+class MLPBlock(MLP):
+    """Transformer MLP block."""
+
+    _version = 2
+
+    def __init__(self, in_dim: int, mlp_dim: int, dropout: float):
+        super().__init__(in_dim, [mlp_dim, in_dim], activation_layer=nn.GELU, inplace=None, dropout=dropout)
+
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.normal_(m.bias, std=1e-6)
+
+    def _load_from_state_dict(
+            self,
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+    ):
+        version = local_metadata.get("version", None)
+
+        if version is None or version < 2:
+            # Replacing legacy MLPBlock with MLP. See https://github.com/pytorch/vision/pull/6053
+            for i in range(2):
+                for type in ["weight", "bias"]:
+                    old_key = f"{prefix}linear_{i + 1}.{type}"
+                    new_key = f"{prefix}{3 * i}.{type}"
+                    if old_key in state_dict:
+                        state_dict[new_key] = state_dict.pop(old_key)
+
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
+        )
+
+
+class EncoderBlock(nn.Module):
+    """Transformer encoder block."""
+
+    def __init__(
+            self,
+            num_heads: int,
+            hidden_dim: int,
+            mlp_dim: int,
+            dropout: float,
+            attention_dropout: float,
+            norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
+    ):
+        super().__init__()
+        self.num_heads = num_heads
+
+        # Attention block
+        self.ln_1 = norm_layer(hidden_dim)
+        self.self_attention = nn.MultiheadAttention(hidden_dim, num_heads, dropout=attention_dropout, batch_first=True)
+        self.dropout = nn.Dropout(dropout)
+
+        # MLP block
+        self.ln_2 = norm_layer(hidden_dim)
+        self.mlp = MLPBlock(hidden_dim, mlp_dim, dropout)
+
+    def forward(self, input: torch.Tensor):
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        x = self.ln_1(input)
+        x, _ = self.self_attention(x, x, x, need_weights=False)
+        x = self.dropout(x)
+        x = x + input
+
+        y = self.ln_2(x)
+        y = self.mlp(y)
+        return x + y
+
+
+class Encoder(nn.Module):
+    """Transformer Model Encoder for sequence to sequence translation."""
+
+    def __init__(
+            self,
+            seq_length: int,
+            num_layers: int,
+            num_heads: int,
+            hidden_dim: int,
+            mlp_dim: int,
+            dropout: float,
+            attention_dropout: float,
+            norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
+    ):
+        super().__init__()
+        # Note that batch_size is on the first dim because
+        # we have batch_first=True in nn.MultiAttention() by default
+        self.pos_embedding = nn.Parameter(torch.empty(1, seq_length, hidden_dim).normal_(std=0.02))  # from BERT
+        self.dropout = nn.Dropout(dropout)
+        layers: OrderedDict[str, nn.Module] = OrderedDict()
+        for i in range(num_layers):
+            layers[f"encoder_layer_{i}"] = EncoderBlock(
+                num_heads,
+                hidden_dim,
+                mlp_dim,
+                dropout,
+                attention_dropout,
+                norm_layer,
+            )
+        self.layers = nn.Sequential(layers)
+        self.ln = norm_layer(hidden_dim)
+
+    def forward(self, input: torch.Tensor):
+        torch._assert(input.dim() == 3, f"Expected (batch_size, seq_length, hidden_dim) got {input.shape}")
+        input = input + self.pos_embedding
+        return self.ln(self.layers(self.dropout(input)))
+
+
+class VisionTransformer(nn.Module):
+    """Vision Transformer as per https://arxiv.org/abs/2010.11929."""
+
+    def __init__(
+            self,
+            input_ch: int,
+            image_size: tuple,
+            patch_size: int,
+            num_layers: int,
+            num_heads: int,
+            hidden_dim: int,
+            mlp_dim: int,
+            dropout: float = 0.0,
+            attention_dropout: float = 0.0,
+            num_classes: int = 1000,
+            representation_size: Optional[int] = None,
+            norm_layer: Callable[..., torch.nn.Module] = partial(nn.LayerNorm, eps=1e-6),
+    ):
+        super().__init__()
+        self.input_ch = input_ch
+        self.image_size = image_size
+        self.patch_size = patch_size
+        self.hidden_dim = hidden_dim
+        self.mlp_dim = mlp_dim
+        self.attention_dropout = attention_dropout
+        self.dropout = dropout
+        self.num_classes = num_classes
+        self.representation_size = representation_size
+        self.norm_layer = norm_layer
+
+        self.conv_proj = nn.Conv2d(
+            in_channels=input_ch, out_channels=hidden_dim, kernel_size=patch_size, stride=patch_size
+        )
+        seq_length = (image_size[0] // patch_size) * (image_size[1] // patch_size)
+
+        # Add a class token
+        self.class_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+        seq_length += 1
+
+        self.encoder = Encoder(
+            seq_length,
+            num_layers,
+            num_heads,
+            hidden_dim,
+            mlp_dim,
+            dropout,
+            attention_dropout,
+            norm_layer,
+        )
+        self.seq_length = seq_length
+
+        if isinstance(self.conv_proj, nn.Conv2d):
+            # Init the patchify stem
+            fan_in = self.conv_proj.in_channels * self.conv_proj.kernel_size[0] * self.conv_proj.kernel_size[1]
+            nn.init.trunc_normal_(self.conv_proj.weight, std=math.sqrt(1 / fan_in))
+            if self.conv_proj.bias is not None:
+                nn.init.zeros_(self.conv_proj.bias)
+        elif self.conv_proj.conv_last is not None and isinstance(self.conv_proj.conv_last, nn.Conv2d):
+            # Init the last 1x1 conv of the conv stem
+            nn.init.normal_(
+                self.conv_proj.conv_last.weight, mean=0.0, std=math.sqrt(2.0 / self.conv_proj.conv_last.out_channels)
+            )
+            if self.conv_proj.conv_last.bias is not None:
+                nn.init.zeros_(self.conv_proj.conv_last.bias)
+
+    def _process_input(self, x: torch.Tensor) -> torch.Tensor:
+        n, c, h, w = x.shape
+        p = self.patch_size
+        n_h = h // p
+        n_w = w // p
+
+        # (n, c, h, w) -> (n, hidden_dim, n_h, n_w)
+        x = self.conv_proj(x)
+        # (n, hidden_dim, n_h, n_w) -> (n, hidden_dim, (n_h * n_w))
+        x = x.reshape(n, self.hidden_dim, n_h * n_w)
+
+        # (n, hidden_dim, (n_h * n_w)) -> (n, (n_h * n_w), hidden_dim)
+        # The self attention layer expects inputs in the format (N, S, E)
+        # where S is the source sequence length, N is the batch size, E is the
+        # embedding dimension
+        x = x.permute(0, 2, 1)
+        return x
+
+    def forward(self, x: torch.Tensor):
+        # Reshape and permute the input tensor
+        x = self._process_input(x)
+        n = x.shape[0]
+
+        # Expand the class token to the full batch
+        batch_class_token = self.class_token.expand(n, -1, -1)
+        x = torch.cat([batch_class_token, x], dim=1)
+
+        x = self.encoder(x)
+        # Classifier "token" as used by standard language architectures
+        return x
+
+
+##vision transformer end
+
+
 ###denseNet start
 class _DenseLayer(nn.Module):
     def __init__(
@@ -826,6 +1048,267 @@ class DecoderCBatchNorm2(nn.Module):
 
 
 ### CBNdecoder end
+
+
+### attention start
+def exists(val):
+    return val is not None
+
+
+def uniq(arr):
+    return {el: True for el in arr}.keys()
+
+
+def default(val, d):
+    if exists(val):
+        return val
+    return d() if isfunction(d) else d
+
+
+def max_neg_value(t):
+    return -torch.finfo(t.dtype).max
+
+
+# feedforward
+class GEGLU(nn.Module):
+    def __init__(self, dim_in, dim_out):
+        super().__init__()
+        self.proj = nn.Linear(dim_in, dim_out * 2)
+
+    def forward(self, x):
+        x, gate = self.proj(x).chunk(2, dim=-1)
+        return x * F.gelu(gate)
+
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, dim_out=None, mult=4, dropout=0.):
+        super().__init__()
+        inner_dim = int(dim * mult)
+        dim_out = default(dim_out, dim)
+        project_in = GEGLU(dim, inner_dim)
+        self.net = nn.Sequential(
+            project_in,
+            nn.Dropout(dropout),
+            nn.Linear(inner_dim, dim_out)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+def zero_module(module):
+    """
+    Zero out the parameters of a module and return it.
+    """
+    for p in module.parameters():
+        p.detach().zero_()
+    return module
+
+
+class CrossAttention(nn.Module):
+    def __init__(self, input_dim, context_dim=None, out_dim=None, num_heads=8, dim_head=64, dropout=0., attn_type='mask'):
+        super().__init__()
+        self.attn_type = attn_type
+        inner_dim = dim_head * num_heads
+        self.re_arr = lambda t: rearrange(t, 'L n (h d) -> (L h) n d', h=num_heads)
+
+        context_dim = default(context_dim, input_dim)
+        out_dim = default(out_dim, input_dim)
+
+        self.scale = dim_head ** -0.5
+        self.heads = num_heads
+
+        self.to_q = nn.Linear(input_dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
+        self.to_out = nn.Sequential(nn.Linear(inner_dim, out_dim),
+                                    nn.Dropout(dropout))
+        self._reset_parameters()
+
+    def _reset_parameters(self):
+        xavier_uniform_(self.to_q.weight)
+        xavier_uniform_(self.to_k.weight)
+        xavier_uniform_(self.to_v.weight)
+        constant_(self.to_out[0].bias, 0.)
+
+    def forward(self, x, context=None, mask=None, weight=None):
+        q = self.to_q(x)
+        context = default(context, x)
+        k = self.to_k(context)
+        v = self.to_v(context)
+
+        q = self.re_arr(q)
+        k = self.re_arr(k)
+        v = self.re_arr(v)
+
+        sim = q @ k.transpose(1, 2) * self.scale
+        if self.attn_type == 'mask':
+        # if exists(mask):
+            max_neg_value = -torch.finfo(sim.dtype).max
+            mask = repeat(mask, 'L n -> (L h) () n', h=self.heads)
+            sim.masked_fill_(~mask, max_neg_value)
+        attn = sim.softmax(dim=-1)  # you should aware that dim=-1
+
+        if self.attn_type == 'weight':
+        # if exists(weight):
+            if weight.shape[1] < attn.shape[1]:
+                weight = torch.cat([weight[:, :1], weight], dim=1)
+            weight = repeat(weight[:, :, 0], 'L n -> (L h) () n', h=self.heads)
+            attn = attn * weight
+            attn = F.normalize(attn, p=1.0, dim=-1)
+
+        out = attn @ v
+        out = rearrange(out, '(L h) n d -> L n (h d)', h=self.heads)
+        return self.to_out(out)
+
+
+### attention end
+
+### RNN start
+# https://github.com/georgeyiasemis/Recurrent-Neural-Networks-from-scratch-using-PyTorch
+
+
+class RNNCell(nn.Module):
+    def __init__(self, input_size, hidden_size, bias=True, nonlinearity="tanh"):
+        super(RNNCell, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bias = bias
+        if nonlinearity == 'tanh':
+            self.act = nn.Tanh()
+        elif nonlinearity == 'relu':
+            self.act = nn.ReLU()
+
+        self.x2h = nn.Linear(input_size, hidden_size, bias=bias)
+        self.h2h = nn.Linear(hidden_size, hidden_size, bias=bias)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        std = 1.0 / np.sqrt(self.hidden_size)
+        for w in self.parameters():
+            w.data.uniform_(-std, std)
+
+    def forward(self, input, hx, weight):
+        hy = (self.x2h(input) * weight + self.h2h(hx))
+        return self.act(hy)
+
+
+class GRUCell(nn.Module):
+    def __init__(self, input_size, hidden_size, bias=True, act='tanh'):
+        super(GRUCell, self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.bias = bias
+        self.x2h = nn.Linear(input_size, 3 * hidden_size, bias=bias)
+        self.h2h = nn.Linear(hidden_size, 3 * hidden_size, bias=bias)
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        std = 1.0 / np.sqrt(self.hidden_size)
+        for w in self.parameters():
+            w.data.uniform_(-std, std)
+
+    def forward(self, input, hx, weight):
+        x_t = self.x2h(input) * weight
+        h_t = self.h2h(hx)
+
+        x_reset, x_upd, x_new = x_t.chunk(3, 1)
+        h_reset, h_upd, h_new = h_t.chunk(3, 1)
+
+        reset_gate = torch.sigmoid(x_reset + h_reset)
+        update_gate = torch.sigmoid(x_upd + h_upd)
+        new_gate = torch.tanh(x_new + (reset_gate * h_new))
+        hy = update_gate * hx + (1 - update_gate) * new_gate
+        return hy
+
+
+class RNN(nn.Module):
+    def __init__(self, input_size, hidden_size, num_layers, bias, output_size, act='tanh', gru=True):
+        super().__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.bias = bias
+        self.output_size = output_size
+        self.rnn_cell_list = nn.ModuleList()
+
+        if gru:
+            cell = GRUCell
+        else:
+            cell = RNNCell
+        self.rnn_cell_list.append(cell(self.input_size,
+                                       self.hidden_size,
+                                       self.bias,
+                                       act))
+        for l in range(1, self.num_layers):
+            self.rnn_cell_list.append(cell(self.hidden_size,
+                                           self.hidden_size,
+                                           self.bias,
+                                           act))
+        self.fc = nn.Linear(self.hidden_size, self.output_size)
+
+    def forward(self, input, proj_err=None):
+        weight = -torch.clamp(torch.log10(torch.abs(proj_err) + 1e-6), min=None, max=0)
+        weight = F.normalize(weight, dim=-2, p=1.0)
+        # Input of shape (batch_size, seqence length, input_size)
+        # Output of shape (batch_size, output_size)
+        b_, h_, w_, v_, c_ = input.shape
+        input = input.reshape([-1, v_, c_])
+        weight = weight.reshape([-1, v_, 1])
+        hidden = [torch.zeros([input.size(0), self.hidden_size], dtype=input.dtype, device=input.device)
+                  for _ in range(self.num_layers)]
+
+        for v in range(v_):
+            for i in range(self.num_layers):
+                if i == 0:
+                    hidden_l = self.rnn_cell_list[i](input[:, v, :], hidden[i], weight[:, v])
+                else:
+                    hidden_l = self.rnn_cell_list[i](hidden[i - 1], hidden[i], weight[:, v])
+                hidden[i] = hidden_l
+
+        # Take only last time step. Modify for seq to seq
+        out = self.fc(hidden[-1])
+        return out.reshape([b_, h_, w_, -1])
+
+
+### RNN end
+
+
+# pixelnerf encoder start https://github.com/airalcorn2/pytorch-nerf/blob/master/image_encoder.py
+class ImageEncoder(nn.Module):
+    def __init__(self, net_type):
+        super().__init__()
+        if net_type == 'feat-resnet':
+            self.net = tvm.resnet34(pretrained=True)
+        elif net_type == 'feat-densenet':
+            self.net = tvm.densenet121(pretrained=True)
+        for param in self.parameters():
+            param.requires_grad = False
+        self.eval()
+
+    @torch.no_grad()
+    def forward(self, x):
+        # Extract feature pyramid from image. See Section 4.1., Section B.1 in the
+        # Supplementary Materials, and: https://github.com/sxyu/pixel-nerf/blob/master/src/model/encoder.py.
+        x = self.net.conv1(x)
+        x = self.net.bn1(x)
+        feats1 = self.net.relu(x)
+
+        feats2 = self.net.layer1(self.net.maxpool(feats1))
+        feats3 = self.net.layer2(feats2)
+        feats4 = self.net.layer3(feats3)
+
+        latents = [feats1, feats2, feats3, feats4]
+        latent_sz = latents[0].shape[-2:]
+        for i in range(len(latents)):
+            latents[i] = F.interpolate(latents[i], latent_sz, mode="bilinear", align_corners=True)
+
+        latents = torch.cat(latents, dim=1)
+        return latents
+
+
+# pixelnerf encoder end
+
 
 ### 3d unet start
 

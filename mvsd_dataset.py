@@ -294,6 +294,110 @@ class OpenroomsFF(Dataset):
         return batch
 
 
+# for netdepth of MGNet
+class realworld_FF_singleview(Dataset):
+    def __init__(self, dataRoot, cfg, img_w=320, img_h=240):
+        self.img_w = img_w
+        self.img_h = img_h
+        self.cfg = cfg
+        self.size = (img_w, img_h)
+        # colmap depth is so big compared to openrooms(meter)
+        self.max_depth_type = 'pose'
+        self.depth_max_scale = 10.0
+
+        sceneList = glob.glob(osp.join(dataRoot, '*'))
+        tmp = []
+        index_to_remove = []  #
+        for i in range(len(sceneList)):
+            if 'main_xml' in sceneList[i]:
+                tmp += (glob.glob(osp.join(sceneList[i], '*')))
+                index_to_remove.append(i)
+        for index in reversed(index_to_remove):
+            del sceneList[index]
+        sceneList += tmp
+
+        self.nameList = []
+        tmp = f'images_{self.img_w}x{self.img_h}'
+        for j, scene in enumerate(sceneList):
+            if tmp in os.listdir(scene):
+                tmp_list = glob.glob(osp.join(scene, tmp, 'im_*'))
+                for t in tmp_list:
+                    self.nameList.append(t)
+                    # if not osp.exists(t.replace('.png', '.dat').replace('im_', 'netdepth_')):
+                    #     self.nameList.append(t)
+            else:
+                tmp_list = glob.glob(osp.join(scene, '*_im_*'))
+                for t in tmp_list:
+                    self.nameList.append(t)
+                    # if not osp.exists(t.replace('.rgbe', '.dat').replace('_im_', '_netdepth_')):
+                    #     self.nameList.append(t)
+        self.length = len(self.nameList)
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, ind):
+        batch = {}
+        name = self.nameList[ind]
+
+        if name.endswith('.rgbe'):
+            is_real = False
+            cam_name = osp.join(osp.dirname(name), osp.basename(name).split('_')[0] + '_cam_mats.npy')
+            cds_depth_name = name.replace('.rgbe', '.dat').replace('_im_', '_cdsdepthest_')
+            cds_conf_name = name.replace('.rgbe', '.dat').replace('_im_', '_cdsconf_')
+            view_idx = int(osp.basename(name).split('_')[2].split('.')[0]) - 1
+
+            seg_name = name.replace('.rgbe', '.png').replace('im', 'immask')
+            seg_large = (loadImage(seg_name, type='s'))[..., :1]
+            seg_small = cv2.resize(seg_large, self.size, interpolation=cv2.INTER_AREA)[:, :, None]
+            mask = (seg_small > 0.9)
+            mask = ndimage.binary_erosion(mask.squeeze(), structure=np.ones((5, 5)), border_value=1)[..., None]
+            mask = mask.astype(np.float32).transpose([2, 0, 1])
+
+            img = loadImage(name, 'i')
+            scale = get_hdr_scale(img, seg_large > 0.9, 'test')
+            img = cv2.resize(img * scale, self.size, interpolation=cv2.INTER_AREA)
+            img = np.clip(img, 0, 1.0).transpose([2, 0, 1])
+        else:
+            is_real = True
+            im = cv2.imread(name, cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+            im = im[..., ::-1].astype(np.float32) / 255.0
+            img = ldr2hdr(im).transpose([2, 0, 1])
+            mask = np.ones_like(img[:1])
+            cam_name = osp.join(osp.dirname(name), 'cam_mats.npy')
+            cds_depth_name = name.replace('.png', '.dat').replace('im_', 'cdsdepthest_')
+            cds_conf_name = name.replace('.png', '.dat').replace('im_', 'cdsconf_')
+            view_idx = int(osp.basename(name).split('_')[1].split('.')[0]) - 1
+
+        cds_depth = loadImage(cds_depth_name, 'd', self.size, normalize=False).transpose([2, 0, 1])
+        cds_conf = loadImage(cds_conf_name, 'd', self.size, normalize=False).transpose([2, 0, 1])
+        if self.max_depth_type == 'pose':
+            cam_mats = np.load(cam_name)
+            ratio = self.size[0] / cam_mats[1, 4, 0]
+            cam_mats[:, 4, :] *= ratio
+            max_depth = cam_mats[1, -1, view_idx - 1]
+        elif self.max_depth_type == 'est':
+            target_conf = cds_conf > 0.6
+            max_depth = np.max(target_conf * cds_depth)
+
+        if is_real:
+            # if scene's max depth is larger than depth_max_scale, we scale down depth.
+            depth_scale = max(1.0, max_depth / self.depth_max_scale)
+            cds_depth = cds_depth / depth_scale
+            max_depth = max_depth / depth_scale
+
+        batch['cds_depth'] = cds_depth
+        batch['cds_conf'] = cds_conf
+        batch['cds_dn'] = np.clip(cds_depth / max_depth, 0, 1)
+        grad_x = cv2.Sobel(batch['cds_dn'][0], -1, 1, 0)
+        grad_y = cv2.Sobel(batch['cds_dn'][0], -1, 0, 1)
+        batch['cds_dg'] = cv2.addWeighted(grad_x, 0.5, grad_y, 0.5, 0)[None]
+        batch['i'] = img
+        batch['m'] = mask
+        batch['name'] = cds_depth_name.replace('cdsdepthest', 'netdepth')
+        return batch
+
+
 class realworld_FF(Dataset):
     def __init__(self, dataRoot, cfg, img_w=320, img_h=240):
         self.img_w = img_w

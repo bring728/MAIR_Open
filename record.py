@@ -128,8 +128,8 @@ def eval_model(model, loader, gpu, cfg, num_gpu, calculator, phase, step, is_tra
 
 
 @torch.no_grad()
-def output_model(model, loader, gpu, cfg):
-    if cfg.mode == 'MG':
+def output_model(model, loader, gpu, cfg, phase):
+    if phase == 'custom_MG':
         thresholds = [round(0.9 - 0.1 * i, 1) for i in range(10)]
 
         def get_confidence_mask(mask, conf, thresholds):
@@ -146,7 +146,7 @@ def output_model(model, loader, gpu, cfg):
         for i, data in enumerate(tqdm(loader)):
             names = data['name']
             data = tocuda(data, gpu, False)
-            pred, gt, masks = model.forward(data, cfg, 'output')
+            pred, gt, masks = model.forward(data, cfg, phase)
             masks = masks['default'][0]
             for name, mask, depth, cds_depth, cds_conf in zip(names, masks, pred['d'], data['cds_depth'],
                                                               data['cds_conf']):

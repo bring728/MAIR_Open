@@ -128,8 +128,8 @@ def oi_run(mesh, bg_image, common_dict, cam_dict, bg_dict, flags):
 
 if __name__ == "__main__":
     # config = 'oi_coord_Zhu.yml'
-    config = 'oi_coord_mair.yml'
-    # config = 'oi_coord_mair++.yml'
+    # config = 'oi_coord_mair.yml'
+    config = 'oi_coord_mair++.yml'
     gpu = 0
     model_root = '/home/vig-titan-118/PycharmProjects/MAIR_Open/Examples/output/{}'
     out_root = '/home/vig-titan-118/PycharmProjects/MAIR_Open/Examples/object_insertion'

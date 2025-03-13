@@ -7,7 +7,8 @@ from loader import load_id_wandb, load_dataloader, load_model
 from loss import RecLoss
 
 
-def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False, run_id=None, config=None, port=2958, num_K=None):
+def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False, run_id=None, config=None, port=2958,
+         num_K=None):
     if is_DDP:
         torch.distributed.init_process_group(backend='nccl', init_method=f'tcp://127.0.0.1:{port}', world_size=num_gpu,
                                              rank=gpu)
@@ -36,9 +37,9 @@ def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False,
         for phase in dict_loaders:
             data_loader, _ = dict_loaders[phase]
             if run_mode == 'output':
-                output_model(model, data_loader, gpu, cfg)
+                output_model(model, data_loader, gpu, cfg, phase)
 
-            if run_mode == 'test':
+            elif run_mode == 'test':
                 cfg.losskey.append('rgb')
                 cfg.losstype.append('l2')
                 cfg.weight.append(1.0)
@@ -51,12 +52,23 @@ def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False,
 
 
 if __name__ == "__main__":
+    version = 'MAIR++'
+    # version = 'MAIR'
+
+    if version == 'MAIR':
+        run_id = '05190941_VSG'
+    elif version == 'MAIR++':
+        run_id = '05221228_VSG'
+
     dataroot = '/home/vig-titan-118/PycharmProjects/MAIR_Open/Examples/input_processed'
-    pretrained = 'pretrained/MAIR'
+    pretrained = f'pretrained/{version}'
+
     root = [dataroot, pretrained]
-    run_id = '05190941_VSG'
     # run_mode = 'test'
     # phase_list = ['test', ]
     run_mode = 'output'
     phase_list = ['custom', ]
+    if version == 'MAIR++':
+        phase_list.insert(0, 'custom_MG')
+
     test(0, 1, run_mode, phase_list, root[0], root[1], False, run_id=run_id, config=None)
