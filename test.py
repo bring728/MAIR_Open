@@ -1,6 +1,6 @@
 import torch.multiprocessing
 import socket
-from record import eval_model, output_model
+from record import eval_model, output_model, mat_edit, mat_edit_single
 from network.net_backbone import ResUNet
 from utils import *
 from loader import load_id_wandb, load_dataloader, load_model
@@ -40,13 +40,25 @@ def test(gpu, num_gpu, run_mode, phase_list, dataRoot, outputRoot, is_DDP=False,
                 output_model(model, data_loader, gpu, cfg, phase)
 
             elif run_mode == 'test':
-                cfg.losskey.append('rgb')
-                cfg.losstype.append('l2')
-                cfg.weight.append(1.0)
-                cfg.lossmask.append('mask')
+                if cfg.mode == 'BRDF' and cfg.version == 'MAIR++':
+                    cfg.losskey.append('rgb')
+                    cfg.losstype.append('l2')
+                    cfg.weight.append(1.0)
+                    cfg.lossmask.append('mask')
+                elif cfg.mode == 'VSG':
+                    cfg.losskey.append('rgb')
+                    cfg.losstype.append('l2')
+                    cfg.weight.append(1.0)
+                    cfg.lossmask.append('mask')
+
                 loss_agent = RecLoss(cfg)
                 eval_dict, _ = eval_model(model, data_loader, gpu, cfg, num_gpu, loss_agent, 'test', 0)
                 print(eval_dict)
+            elif run_mode == 'mat_edit':
+                debug = False
+                mat_edit(model, data_loader, gpu, cfg, debug=debug)
+    else:
+        mat_edit_single(model, gpu, cfg.models, config)
     if is_DDP:
         torch.distributed.destroy_process_group()
 

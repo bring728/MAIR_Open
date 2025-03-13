@@ -1,0 +1,26 @@
+model:
+  use_pos: False
+  use_normal: True
+  use_rough: True
+  use_albedo: True
+  global_coord: True
+  encode_normal: False
+  fourier:
+    map_dim: 32
+    sigma: 1
+  encoder:
+    backbone: resnet34
+    pretrained: True
+    num_layers: 4
+    use_first_pool: False
+    latent_size: [480, 640] # [row, col]
+
+render:
+  chunk: 400000
+#  chunk: 60000
+#  parallel: [0, 1] # comment this line to disable parallel ssrt
+  uncertainty_boundary: 20 # smooth where ray tracing hits the image boundary, the larger the smoother, comment this line to disable smoothing
+
+eval:
+  load_epoch: 39
+  spp: 128
