@@ -1,0 +1,38 @@
+version: MAIR++
+
+mode: MG
+
+nepoch: 60
+batchsize: 16
+num_workers: 6
+
+eval_format: [ test, epoch, 2 ]
+
+losskey: [ n, n, a, r, d ]
+losstype: [ l2, ang, sil2, l2, silogl2 ]
+weight: [ 1.0, 1.0, 3.0, 1.0, 1.0 ]
+lossmask: [ mask, mask, mask, mask, mask ]
+
+scheduler:
+  init_lr: 1e-3
+  type: OneCycleLR
+  max_lr: 4e-3
+  final_lr: 1e-4
+
+MGNet:
+  init_feature: 96
+
+imWidth: 320
+imHeight: 240
+e_type: e
+envCols: 160
+envRows: 120
+env_height: 8
+env_width: 16
+num_view_all: 9
+autocast: True
+pinned: True
+randomseed: 2245
+i_print: 10
+i_record: 50
+d_type: net

@@ -84,6 +84,145 @@ def vis_img(data, is_single=False, is_hdr=False, is_normal=False, normalize=Fals
     return data
 
 
+@torch.no_grad()
+def record_images(curr_model, cfg, wandb_obj, data, pred, gt, mask, step, val=False):
+    prefix = ''
+    if val:
+        prefix = 'val_media/'
+    log_image_dict = {}
+
+    data_name = data['name'][0]
+    print(f'logging image... step: {step}, name: {data_name}')
+
+    _, _, h, w = data['i'].shape
+    # gt = extract_single_batch(gt)
+    # pred = extract_single_batch(pred)
+    imgs = [vis_img(data['i'], is_hdr=True),
+            vis_img(data['cds_dn'], is_single=True),
+            vis_img(data['cds_conf'], is_single=True)]
+    if 'default' in mask:
+        mask = mask['default'][0]
+    else:
+        mask = mask['env'][0]
+    if mask.ndim == 5:
+        mask = mask[..., 0].permute([0, 3, 1, 2])
+    if mask.shape[2] == 1:
+        # h_tmp, w_tmp = closest_square_factors(mask.shape[3])
+        n_env_sample = 3
+        h_tmp = 3 * n_env_sample
+        w_tmp = 2 * n_env_sample
+        mask = mask[:, :, :, :h_tmp * w_tmp].reshape([1, 1, h_tmp, w_tmp])
+        gt['e'] = rearrange(gt['e'][0, 0, :h_tmp * w_tmp], '(h w) (env_h env_w) c -> c h w env_h env_w', h=h_tmp,
+                            w=w_tmp, env_h=8, env_w=16)
+        pred['si_e'] = rearrange(pred['si_e'][0, 0, :h_tmp * w_tmp], '(h w) (env_h env_w) c -> c h w env_h env_w',
+                                 h=h_tmp, w=w_tmp, env_h=8, env_w=16)
+        # pred['e_depth'] = pred['e_depth'][:, :, :, :h_tmp * w_tmp].reshape([1, h_tmp, w_tmp, 8, 16]).expand(
+        #     [3, -1, -1, -1, -1])
+        # pred['e_weight'] = pred['e_weight'][:, :, :, :h_tmp * w_tmp].reshape([1, h_tmp, w_tmp, 8, 16]).expand(
+        #     [3, -1, -1, -1, -1])
+    imgs.append(vis_img(mask, is_single=True, size=(h, w)))
+
+    if cfg.mode == 'MG':
+        imgs += [vis_img(pred['n'], is_normal=True), vis_img(gt['n'], is_normal=True),
+                 vis_img(pred['si_d'], is_single=True), vis_img(gt['d'], is_single=True, normalize=True), ]
+        if cfg.version == 'MAIR++':
+            imgs += [vis_img(pred['si_a'], is_hdr=True), vis_img(gt['a'], is_hdr=True),
+                     vis_img(pred['r'], is_single=True), vis_img(gt['r'], is_single=True), ]
+
+    elif cfg.mode == 'incident' or cfg.mode == 'exitant':
+        if 'si_' + cfg.e_type in pred:
+            imgs += [vis_img(pred['si_' + cfg.e_type], size=(h, w), is_env=True), ]
+        else:
+            imgs += [vis_img(pred[cfg.e_type], size=(h, w), is_env=True), ]
+        imgs += [vis_img(gt[cfg.e_type], size=(h, w), is_env=True), ]
+
+        if cfg.version == 'MAIR++':
+            imgs += [vis_img(pred['rgb'][..., 0, :].permute([0, 3, 1, 2]), is_hdr=True, size=(h, w)),
+                     vis_img(pred['shading'], normalize=True, size=(h, w)),
+                     vis_img(gt['shading'], is_hdr=True, size=(h, w)),
+                     vis_img(pred['specular'][..., 0, :].permute([0, 3, 1, 2]), is_hdr=True, size=(h, w)),
+                     vis_img(gt['specular'][..., 0, :].permute([0, 3, 1, 2]), is_hdr=True, size=(h, w)), ]
+
+    elif cfg.mode == 'BRDF':
+        imgs += [vis_img(pred['si_a'], is_hdr=True), ]
+        if 'si_a_sv' in pred:
+            imgs += [vis_img(pred['si_a_sv'], is_hdr=True), ]
+        imgs += [vis_img(gt['a'], is_hdr=True), vis_img(pred['r'], is_single=True),
+                 vis_img(gt['r'], is_single=True), ]
+
+    # elif cfg.mode == 'AlbedoFusion':
+    #     if not hasattr(cfg.AlbedoFusion, 'is_rough') and cfg.AlbedoFusion.is_rough:
+    #         imgs += [vis_img(pred['si_a'], is_hdr=True), vis_img(gt['a'], is_hdr=True)]
+    # if cfg.version == 'MAIR++':
+    # pred['si_a_s'], sc = LSregress(pred['a_s'].detach(), gt['a'], pred['a_s'], mask)
+    # imgs += [
+    # vis_img(pred['rgb'][..., 0, :].permute([0, 3, 1, 2]), is_hdr=True, size=(h, w)),
+    # vis_img(pred['diffuse'][..., 0, :].permute([0, 3, 1, 2]), is_hdr=True, size=(h, w)),
+    # vis_img(pred['specular'][..., 0, :].permute([0, 3, 1, 2]), is_hdr=True, size=(h, w)),
+    # vis_img(pred['shading'][..., 0, :].permute([0, 3, 1, 2]), normalize=True, size=(h, w)),
+    # vis_img(pred['error'], size=(h, w)),
+    # vis_img(pred['si_a_s'], is_hdr=True), ]
+
+    elif cfg.mode == 'VSG':
+        env_pred = pred['si_e']
+        env_gt = gt['e']
+        env_pred = env_pred.reshape([3, h_tmp, w_tmp, 8, 16])
+        env_pred = hdr2ldr(torch.clamp(env_pred, 0.0, 1.0))
+        env_pred = env_pred / (torch.max(env_pred) + TINY_NUMBER)
+        env_gt = env_gt.reshape([3, h_tmp, w_tmp, 8, 16])
+        env_gt = hdr2ldr(torch.clamp(env_gt, 0.0, 1.0))
+        env_gt = env_gt / (torch.max(env_gt) + TINY_NUMBER)
+        # pred['e_depth'] = torch.clamp(pred['e_depth'] / math.sqrt(3), max=1.0)
+        # pred['e_depth'] = pred['e_depth'] / (cfg.VSGDecoder.box_length * math.sqrt(3))
+        # is_between_zero_and_one = ((pred['e_depth'] >= 0) & (pred['e_depth'] <= 1)).all().item()
+        # if not is_between_zero_and_one:
+        #     print('depth error..?', pred['e_depth'].max(), pred['e_depth'].min())
+
+        env_record = torch.zeros([3, h_tmp, w_tmp * 2, 8, 16], device=env_pred.device, dtype=env_pred.dtype)
+        env_record[:, :, ::2] = env_pred
+        env_record[:, :, 1::2] = env_gt
+        # env_record[:, :, 2::4] = pred['e_depth']
+        # env_record[:, :, 3::4] = pred['e_weight']
+
+        _ch, _r, _c, _h, _w = env_record.shape
+        env_record = torch.permute(env_record, (0, 1, 3, 2, 4)).reshape(_ch, _r * _h, _c * _w)
+        env_record = F.interpolate(env_record[None], size=[h, 2 * w])[0]
+        imgs.append(env_record[:, :, :w])
+        imgs.append(env_record[:, :, w:2 * w])
+        # imgs.append(env_record[:, :, 2 * w:3 * w])
+        # imgs.append(env_record[:, :, 3 * w: 4 * w])
+
+    elif cfg.mode == 'render':
+        pred['rgb'] = pred['rgb'].permute([2, 3, 0, 1])
+        pred['diffuse'] = pred['diffuse'].permute([2, 3, 0, 1])
+        pred['specular'] = pred['specular'].permute([2, 3, 0, 1])
+        gt['rgb'] = gt['rgb'].permute([2, 3, 0, 1])
+        if 'n' in pred:
+            imgs += [(0.5 * (pred['n'] + 1))]
+        if 'a' in pred:
+            imgs += [hdr2ldr(pred['a'])]
+        if 'r' in pred:
+            imgs += [pred['r'].expand([3, -1, -1])]
+
+        imgs += [hdr2ldr(pred['diffuse'][0]),
+                 hdr2ldr(pred['specular'][0]), hdr2ldr(pred['specular'][1]), hdr2ldr(pred['specular'][2]),
+                 hdr2ldr(pred['rgb'][0]), hdr2ldr(pred['rgb'][1]), hdr2ldr(pred['rgb'][2]),
+                 hdr2ldr(gt['rgb'][0]), hdr2ldr(gt['rgb'][1]), hdr2ldr(gt['rgb'][2]), ]
+
+    if len(imgs) % 2 == 1:
+        imgs.append(torch.zeros_like(imgs[0]))
+    img_len = len(imgs) // 2
+    image_up = torch.cat(imgs[:img_len], dim=2)
+    image_down = torch.cat(imgs[img_len:], dim=2)
+    image = torch.cat([image_up, image_down], dim=1)
+    if wandb_obj is None:
+        cv2.imwrite(f'record_imgs/{step}.png', cv2fromtorch(image)[:, :, ::-1])
+    else:
+        log_image_dict[prefix + cfg.mode] = wandb.Image(image)
+        wandb_obj.log(log_image_dict, step=step)
+
+
+
 def eval_model(model, loader, gpu, cfg, num_gpu, calculator, phase, step, is_training=False):
     flag = 'train' if is_training else 'test'
     model.switch_to_eval()

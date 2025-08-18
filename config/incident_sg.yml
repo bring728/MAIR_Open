@@ -1,0 +1,45 @@
+version: MAIR++
+
+mode: incident
+
+nepoch: 20
+batchsize: 4 # for training
+num_workers: 4
+#eval_format: [test, step, 3000]
+eval_format: [ test, epoch, 1 ]
+
+losskey: [ e, e, diffuse, specular, rgb ]
+losstype: [ silogl2, logl2, logl2, logl2, l2 ]
+weight: [ 1.0, 1.0, 0.5, 0.5, 1.0 ]
+lossmask: [ mask, mask, mask, mask, mask ]
+si_ramp: 10000
+si_max: 100
+
+scheduler:
+  init_lr: 4e-4
+  type: OneCycleLR
+  max_lr: 2e-3
+  final_lr: 2e-4
+
+MGNet:
+  path: 02161212_MG
+  init_feature: 96
+
+InLightSG:
+  init_feature: 64
+  SGNum: 12
+
+imWidth: 320
+imHeight: 240
+e_type: e
+envCols: 160
+envRows: 120
+env_height: 8
+env_width: 16
+num_view_all: 9
+autocast: True
+pinned: True
+randomseed: 2245
+i_print: 10
+i_record: 50
+d_type: net

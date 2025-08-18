@@ -1,0 +1,41 @@
+version: MAIR++
+
+mode: mat_edit
+models: [Li21, Zhu, MAIR, MAIR++]
+
+batchsize: 1
+num_workers: 1
+
+InLightEncoder:
+  path: 02261143_incident
+  init_feature: 64
+  dim: 96
+
+ShadingNet:
+  path: 02261143_incident
+  mlp_init: True
+  hidden: 128
+  num_layers: 3
+  last_bias: False
+
+SpecularNet:
+  path: 02261143_incident
+  mlp_init: True
+  hidden: 128
+  num_layers: 4
+  last_bias: False
+
+imWidth: 320
+imHeight: 240
+e_type: e
+envCols: 160
+envRows: 120
+env_height: 8
+env_width: 16
+num_view_all: 9
+autocast: True
+pinned: True
+randomseed: 2245
+i_print: 10
+i_record: 50
+d_type: net

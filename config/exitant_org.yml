@@ -1,0 +1,52 @@
+version: MAIR
+
+mode: exitant
+
+nepoch: 20
+batchsize: 12 # for training
+num_workers: 4
+eval_format: [ test, epoch, 1 ]
+
+losskey: [ e_d, vis]
+losstype: [ silogl2, beta]
+weight: [ 1.0,  0.0001]
+lossmask: [ mask, nomask]
+#si_ramp: 10000
+#si_max: 100
+
+#losskey: [ e_d, e_d, vis]
+#losstype: [ silogl2, logl2, beta]
+#weight: [ 2.0, 1.0,  0.0001]
+#lossmask: [ mask, mask, nomask]
+#si_ramp: 10000
+#si_max: 100
+
+scheduler:
+  init_lr: 1e-4
+  type: OneCycleLR
+  max_lr: 5e-4
+  final_lr: 5e-5
+
+MGNet:
+  path: 02161212_MG
+  init_feature: 96
+
+ExDLVSG:
+  box_length: 0
+#  box_length: 1.2
+  norm: batch
+
+imWidth: 320
+imHeight: 240
+e_type: e_d
+envCols: 40
+envRows: 30
+env_height: 8
+env_width: 16
+num_view_all: 9
+autocast: True
+pinned: True
+randomseed: 2245
+i_print: 10
+i_record: 50
+d_type: cds

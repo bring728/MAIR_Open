@@ -1,0 +1,92 @@
+version: MAIR++
+
+mode: BRDF
+
+nepoch: 10
+batchsize: 8
+#accum_iter: 2
+num_workers: 4
+use_checkpoint: False
+#use_checkpoint: True
+
+#eval_format: [test, step, 3000]
+eval_format: [ test, epoch, 1 ]
+
+losskey: [ a, r ]
+losstype: [ sil2, l2 ]
+weight: [ 3.0, 1.0 ]
+lossmask: [ mask, mask ]
+
+scheduler:
+  init_lr: 6e-4
+  type: OneCycleLR
+  max_lr: 3e-3
+  final_lr: 5e-4
+
+ContextNet:
+  use: True
+  net_in: [ rgb, n, d ]
+  dim: 32
+  norm: batch
+
+AggregationNet:
+  spec_type: 'spec_in'
+#  light_mix: cat
+  light_mix: sum
+
+  light_hidden: 128
+  light_dim: 64
+
+  out_dim: 32
+  out_hidden: 128
+
+  type: rnn
+  gru: True
+  hidden: 32
+  num_layers: 3
+  act: tanh
+  bias: True
+
+RefineNet:
+  type: old
+  net_in: [ rgb, n, d, brdf_feat ]
+  #  filters: [ 64, 128, 256, 512 ]
+  norm: group
+
+imWidth: 320
+imHeight: 240
+e_type: e
+envCols: 160
+envRows: 120
+env_height: 8
+env_width: 16
+num_view_all: 9
+autocast: True
+pinned: True
+randomseed: 2245
+i_print: 10
+i_record: 50
+d_type: net
+
+MGNet:
+  path: 02161212_MG
+  init_feature: 96
+
+InLightEncoder:
+  path: 02261143_incident
+  init_feature: 64
+  dim: 96
+
+ShadingNet:
+  path: 02261143_incident
+  mlp_init: True
+  hidden: 128
+  num_layers: 3
+  last_bias: False
+
+SpecularNet:
+  path: 02261143_incident
+  mlp_init: True
+  hidden: 128
+  num_layers: 4
+  last_bias: False

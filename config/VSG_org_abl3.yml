@@ -1,0 +1,117 @@
+version: MAIR
+
+mode: VSG
+
+nepoch: 10
+batchsize: 1
+num_workers: 2
+num_of_samples: 4000
+use_checkpoint: False
+#use_checkpoint: True
+
+eval_format: [ test, step, 10000 ]
+#eval_format: [ test, epoch, 1 ]
+
+losskey: [ e, vis ]
+losstype: [ silogl2, beta ]
+weight: [ 10.0, 0.01 ]
+lossmask: [ mask, nomask ]
+
+#losskey: [ e, vis, i ]
+#losstype: [ silogl2, beta, wl2 ]
+#weight: [ 1.0, 0.001, 0.1]
+#lossmask: [ mask, nomask, weighted_mask]
+
+scheduler:
+  init_lr: 1e-4
+  type: OneCycleLR
+  max_lr: 1e-4
+  final_lr: 1e-4
+
+VSGEncoder:
+#  src_type: 'exi'
+#  src_type: 'inci'
+#  src_type: 'none'
+  src_type: 'train'
+  vsg_type: 'voxel'
+  vsg_res: 128
+  filters: [ 64, 128, 256, 512, 512, 1024 ]
+  #  filters: [64, 128, 512, 512, 1024]
+  norm: instance
+  parameterize: 'sg'
+
+VSGDecoder:
+  use: True
+  box_length: 0
+  #  box_length: 1.2
+  closest_threshold: (1 / 32 * 4) * 2 # according to triplane resolution..
+  #  depth_resolution: 48
+  #  importance_sampling: True
+  depth_resolution: 64
+  importance_sampling: False
+
+  vsg_rgb: True
+  geo_type: 'alpha'
+  #  geo_type: 'density'
+  #  sg_order: 'before'
+  sg_order: 'after'
+  anti_aliasing: False
+
+imWidth: 320
+imHeight: 240
+e_type: e
+envCols: 160
+envRows: 120
+env_height: 8
+env_width: 16
+num_view_all: 9
+autocast: True
+pinned: True
+randomseed: 2245
+i_print: 10
+i_record: 50
+d_type: cds
+
+MGNet:
+  path: 02161212_MG
+  init_feature: 96
+
+InLightSG:
+  path: 04041720_incident_org
+  SGNum: 3
+  init_feature: 64
+  e_type: e_d
+
+ExDLVSG:
+  path: 04191149_exitant
+  norm: batch
+
+ContextNet:
+  path: 04051806_BRDF
+  use: True
+  net_in: [ rgb, n, d, c ]
+  dim: 32
+  norm: batch
+
+AggregationNet:
+  path: 04051806_BRDF
+  DL_type: microfacet
+  light_mix: cat
+
+  light_hidden: 32
+  light_dim: 8
+
+  out_dim: 32
+  out_hidden: 128
+
+  type: mva
+  dim_head: 32
+  depth: 2
+  mlp_hidden: 128
+
+RefineNet:
+  path: 04051806_BRDF
+  use: True
+  net_in: [ rgb, n, d, c, brdf_feat ]
+  type: old
+  norm: group

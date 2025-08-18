@@ -1,0 +1,168 @@
+version: MAIR++
+
+mode: VSG
+sg_order: 'after'
+
+nepoch: 10
+batchsize: 1
+num_workers: 2
+num_of_samples: 4000
+use_checkpoint: False
+#use_checkpoint: True
+
+eval_format: [ test, step, 10000 ]
+#eval_format: [ test, epoch, 1 ]
+
+losskey: [ e, vis ]
+losstype: [ silogl2, beta ]
+weight: [ 10.0, 0.01 ]
+lossmask: [ mask, nomask ]
+
+#losskey: [ e, vis, i ]
+#losstype: [ silogl2, beta, wl2 ]
+#weight: [ 1.0, 0.001, 0.1]
+#lossmask: [ mask, nomask, weighted_mask]
+
+scheduler:
+  init_lr: 1e-4
+  type: OneCycleLR
+  max_lr: 1e-4
+  final_lr: 1e-4
+
+#ExDLVSG:
+#  norm: group
+#  dim: 64
+#  #  filters: [128, 256, 512, 1024, 1024, 1024]
+#  filters: [ 64, 128, 256, 256, 512, 512 ]
+
+VSGEncoder:
+  src_type: 'inci'
+#  src_type: 'exi'
+
+#  vsg_type: 'voxel'
+#  vsg_res: 128
+#  filters: [ 128, 256, 256, 512, 512, 1024 ]
+#  norm: instance
+  parameterize: 'sg'
+#  sg_order: 'before'
+
+  vsg_type: 'triplane'
+  use_pre_net: False
+  patch_size: 4
+  density_reg_p_dist: 0.004
+
+  kv_dim: 1024 # 768
+  enc_num_layers: 9 # 12
+  enc_num_heads: 16 # 16
+  mlp_dim: 3072 # 3072
+
+  q_dim: 512 # 768
+  triplane_dim: 32 # 32
+  triplane_low_res: 32 # 32
+  dec_num_layers: 6 # 12
+  dec_num_heads: 16 # 16
+  tri_up: 4
+
+imWidth: 320
+imHeight: 240
+e_type: e
+envCols: 160
+envRows: 120
+env_height: 8
+env_width: 16
+num_view_all: 9
+autocast: True
+pinned: True
+randomseed: 2245
+i_print: 10
+i_record: 50
+d_type: net
+
+MGNet:
+  path: 02161212_MG
+  init_feature: 96
+
+InLightEncoder:
+  path: 02261143_incident
+  #  path: 03230040_incident
+  init_feature: 64
+  dim: 96
+
+InLightDecoder:
+  path: 02261143_incident
+  mlp_init: True
+  hidden: 128
+  num_layers: 3
+  last_bias: False
+  chunk_size: 100000
+
+ShadingNet:
+  path: 02261143_incident
+  #  path: 03230040_incident
+  mlp_init: True
+  hidden: 128
+  num_layers: 3
+  last_bias: False
+
+SpecularNet:
+  path: 02261143_incident
+  #  path: 03230040_incident
+  mlp_init: True
+  hidden: 128
+  num_layers: 4
+  #  num_layers: 5
+  last_bias: False
+
+ContextNet:
+  path: 04151435_BRDF
+  use: True
+  net_in: [ rgb, n, d ]
+  dim: 32
+  norm: batch
+
+AggregationNet:
+  path: 04151435_BRDF
+  spec_type: 'spec_in'
+
+  light_hidden: 128
+  refdir_in: False
+  light_dim: 64
+
+  out_dim: 32
+  out_hidden: 128
+
+  type: mva_attn
+  depth: 2
+  dim_head: 32
+  mlp_hidden: 128
+  target_embed: True
+  attn_dim_head: 16
+  attn_n_head: 4
+
+RefineNet:
+  path: 04151435_BRDF
+  type: old
+  net_in: [ rgb, n, d, brdf_feat ]
+  #  filters: [ 64, 128, 256, 512 ]
+  norm: group
+
+AlbedoFusion:
+  path: 04191225_AlbedoFusion
+
+
+#VSGDecoder:
+#  use: True
+#  box_length: 0
+#  #  box_length: 1.2
+#  closest_threshold: (1 / 32 * 4) * 2 # according to triplane resolution..
+#  #  depth_resolution: 48
+#  #  importance_sampling: True
+#  depth_resolution: 64
+#  importance_sampling: False
+#
+#  vsg_rgb: True
+#  geo_type: 'alpha'
+#  #  geo_type: 'density'
+#  #  sg_order: 'before'
+#  sg_order: 'after'
+#  anti_aliasing: False

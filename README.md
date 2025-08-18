@@ -43,6 +43,13 @@ This code has been verified to work with **CUDA 11.8**, but the specific version
    ```bash
    pip install tqdm termcolor scikit-image imageio nvidia-ml-py3 h5py wandb opencv-python trimesh[easy] einops
    ```
+## Training
+```bash
+python 1_run_ddp.py -c VSG_org.yml
+```
+   
+
+
 
 ## Object Insertion
 
